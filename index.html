@@ -27,6 +27,10 @@ textarea,input[type=text],select{width:100%;font:inherit;color:var(--tx);backgro
 
 <div class="card"><h2>1. Photos / PDF</h2>
 <label class="drop">📷 Photos ya PDF chuno<input id="f" type="file" accept="image/*,application/pdf" multiple hidden></label>
+<div class="card" style="margin:10px 0;background:var(--bg)"><b>🤖 AI Vision (best, free Gemini key)</b>
+<p class="mu" style="margin:4px 0">Free key: aistudio.google.com → "Get API key". Key sirf aapke browser me rehti hai.</p>
+<div class="row"><input type="text" id="key" placeholder="Gemini API key" style="width:58%"><input type="text" id="mdl" value="gemini-2.5-flash" style="width:38%"></div>
+<button id="ai" style="margin-top:8px" disabled>AI Vision se quiz banao</button></div>
 <div class="row" style="margin-top:10px"><label class="mu"><input type="checkbox" id="bw"> Black-white filter (dhundhli photo ke liye)</label>
 <button id="ocr" disabled>OCR chalao</button></div>
 <div class="bar"><i id="pb"></i></div><div class="mu" id="st">Pehli baar language data (~40 MB) download hoga.</div></div>
@@ -57,7 +61,7 @@ $('f').onchange=async e=>{
     try{ if(f.type==='application/pdf') await loadPdf(f); else {const b=await createImageBitmap(f);addPage(b,b.width,b.height)} }
     catch(err){$('st').textContent='Padh nahi paya: '+f.name}
   }
-  $('st').textContent=pages.length+' page(s) ready';$('ocr').disabled=!pages.length;fillPages();
+  $('st').textContent=pages.length+' page(s) ready';$('ocr').disabled=$('ai').disabled=!pages.length;fillPages();
 };
 function addPage(src,w,h){const s=Math.min(1,2400/Math.max(w,h)),c=document.createElement('canvas');
   c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(src,0,0,c.width,c.height);pages.push(c)}
@@ -135,11 +139,52 @@ $('ps').onclick=()=>{Q=parse($('tx').value);$('rv').classList.toggle('hide',!Q.l
   if(!Q.length){$('st').textContent='Koi Q/Ans nahi mila. "Ans:" / "उत्तर:" / "જવાબ:" marker check karo.';return}
   render();fillQ();draw()};
 
+
+/* ---------- AI vision (Gemini free tier) ---------- */
+try{$('key').value=localStorage.getItem('gk')||''}catch(e){}
+const PROMPT=`You are reading one page of a school/college book photo. Text may be Hindi (Devanagari), English or Gujarati, possibly mixed.
+Find every question with its answer on the page (Q&A pairs, or existing MCQs). Convert each into a 4-option MCQ.
+Rules: keep question/options in the SAME language and script as the book, never translate. Use the book's own answer as the correct option; if only Q&A is given, make 3 plausible wrong options in the same language. If a question refers to a figure/graph/diagram/shape, give its bounding box on THIS image as "fig":[x,y,w,h] in 0-1000 normalized units (x,y top-left), tight around the figure only; else "fig":null. If the page shows two languages side by side, keep both in the question exactly as printed. If the page has NO answer key/answer, solve it yourself, pick the best option and set "guess":true (else false). Do not invent questions that are not on the page.
+Reply ONLY JSON: {"questions":[{"q":"","options":["","","",""],"answer":0,"guess":false,"fig":null}]}  ("answer" = index 0-3)`;
+async function gem(canvas,key,model){
+  const b64=canvas.toDataURL('image/jpeg',.8).split(',')[1];
+  for(let t=0;t<3;t++){
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',
+      headers:{'Content-Type':'application/json','x-goog-api-key':key},
+      body:JSON.stringify({contents:[{parts:[{text:PROMPT},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],generationConfig:{responseMimeType:'application/json'}})});
+    if(r.status===429){await new Promise(z=>setTimeout(z,8000*(t+1)));continue}
+    const j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);
+    const txt=j.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'{}';
+    return JSON.parse(txt.replace(/```json|```/g,'').trim()).questions||[];
+  }
+  throw new Error('Rate limit (free quota). Thodi der baad try karo.');
+}
+function cropFig(c,b){
+  if(!Array.isArray(b)||b.length!==4)return null;const [x,y,w,h]=b.map(Number);if(![x,y,w,h].every(isFinite)||w<20||h<20)return null;
+  const p=15,X=Math.max(0,x-p)/1000*c.width,Y=Math.max(0,y-p)/1000*c.height,W=Math.min(c.width-X,(w+2*p)/1000*c.width),H=Math.min(c.height-Y,(h+2*p)/1000*c.height);
+  const o=document.createElement('canvas');o.width=W;o.height=H;o.getContext('2d').drawImage(c,X,Y,W,H,0,0,W,H);return o.toDataURL('image/jpeg',.9);
+}
+$('ai').onclick=async()=>{
+  const key=$('key').value.trim(),model=$('mdl').value.trim();if(!key){$('st').textContent='Pehle Gemini API key daalo.';return}
+  try{localStorage.setItem('gk',key)}catch(e){}
+  $('ai').disabled=true;const res=[];let next=0,done=0,fail=0,lastErr='';
+  const shrink=c=>{const s=Math.min(1,1400/Math.max(c.width,c.height)),o=document.createElement('canvas');o.width=c.width*s;o.height=c.height*s;o.getContext('2d').drawImage(c,0,0,o.width,o.height);return o};
+  async function worker(){while(true){const i=next++;if(i>=pages.length)return;
+    try{const sm=shrink(pages[i]);res[i]=(await gem(sm,key,model)).filter(q=>q.q&&Array.isArray(q.options)&&q.options.length>1).map(q=>({q:q.q,opts:q.options.map(String),ans:Number(q.answer)||0,guess:!!q.guess,fig:cropFig(sm,q.fig)}))}
+    catch(e){fail++;lastErr=e.message}
+    done++;$('pb').style.width=(done/pages.length*100)+'%';$('st').textContent=`${done}/${pages.length} pages padh liye`}}
+  await Promise.all([worker(),worker()]);
+  Q=[];res.forEach(a=>a&&Q.push(...a));
+  $('st').textContent=Q.length+' questions mile'+(fail?` (${fail} page fail: ${lastErr})`:'');
+  $('ai').disabled=false;$('rv').classList.toggle('hide',!Q.length);$('fg').classList.toggle('hide',!Q.length);
+  if(Q.length){render();fillQ();draw()}
+};
+
 /* ---------- review / edit ---------- */
 function render(){
   const L=$('list');L.replaceChildren();
   Q.forEach((q,qi)=>{
-    const c=el('div','card');c.append(el('div','mu','Q'+(qi+1)));
+    const c=el('div','card');c.append(el('div','mu','Q'+(qi+1)+(q.guess?'  ⚠ AI ka andaza, answer check karo':'')));
     const ta=el('textarea');ta.rows=2;ta.value=q.q;ta.oninput=()=>q.q=ta.value;c.append(ta);
     if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';const rm=el('button','g','Figure hatao');rm.onclick=()=>{q.fig=null;render()};c.append(im,rm)}
     q.opts.forEach((o,oi)=>{
