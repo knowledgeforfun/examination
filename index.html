@@ -1,235 +1,135 @@
 <!DOCTYPE html>
 <html lang="hi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Book → MCQ Quiz (Free OCR prototype)</title>
+<title>PDF → MCQ Quiz</title>
 <style>
 :root{--bg:#f7f6f2;--card:#fff;--tx:#1d1d1b;--mu:#6b6a64;--ac:#3b5bdb;--ok:#2b8a3e;--bad:#c92a2a;--bd:#e2e0d8}
 @media(prefers-color-scheme:dark){:root{--bg:#17171a;--card:#222226;--tx:#ecebe6;--mu:#a09f98;--ac:#7c93ff;--ok:#69db7c;--bad:#ff8787;--bd:#34343a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,"Noto Sans Devanagari","Noto Sans Gujarati",sans-serif}
-main{max-width:760px;margin:0 auto;padding:16px}h1{font-size:22px;margin:8px 0}h2{font-size:17px;margin:0 0 8px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,"Noto Sans Devanagari","Noto Sans Gujarati",sans-serif}
+main{max-width:720px;margin:0 auto;padding:16px}h1{font-size:22px;margin:8px 0}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:14px}
 .mu{color:var(--mu);font-size:14px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-button{font:inherit;border:0;border-radius:10px;padding:9px 14px;background:var(--ac);color:#fff;cursor:pointer}
-button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}button:disabled{opacity:.5}
-textarea,input[type=text],select{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px}
-.drop{display:block;border:2px dashed var(--bd);border-radius:12px;padding:22px;text-align:center;cursor:pointer;color:var(--mu)}
-.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--ac);width:0}
+button{font:inherit;border:0;border-radius:10px;padding:10px 16px;background:var(--ac);color:#fff;cursor:pointer}button:disabled{opacity:.5}
+button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.drop{display:block;border:2px dashed var(--bd);border-radius:12px;padding:26px;text-align:center;cursor:pointer;color:var(--mu)}
+input[type=number]{width:70px;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;background:var(--ac);width:0;transition:width .3s}
 .opt{display:block;width:100%;text-align:left;margin:8px 0;background:var(--card);color:var(--tx);border:1px solid var(--bd)}
 .opt.ok{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,var(--card))}
 .opt.bad{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 15%,var(--card))}
 .fig{max-width:100%;border:1px solid var(--bd);border-radius:8px;background:#fff;margin:6px 0}
-.oi{display:flex;gap:6px;margin:4px 0;align-items:center}.oi input[type=radio]{flex:none}
-#cv{width:100%;touch-action:none;border:1px solid var(--bd);border-radius:8px;cursor:crosshair}
-.hide{display:none}
+#log{font-size:13px;color:var(--mu);margin-top:6px;max-height:140px;overflow:auto}.err{color:var(--bad)}.hide{display:none}
 </style></head><body><main>
-<h1>📚 Book → MCQ Quiz <span class="mu">(free OCR prototype)</span></h1>
-<p class="mu">Hindi / English / ગુજરાતી · Tesseract OCR browser me chalta hai, koi paid AI nahi.</p>
+<h1>📚 PDF → MCQ Quiz</h1>
+<p class="mu">Book ka PDF (ya photos) daalo. Hindi, English aur ગુજરાતી ke question-answer se quiz apne aap ban jayega.</p>
 
-<div class="card"><h2>1. Photos / PDF</h2>
-<label class="drop">📷 Photos ya PDF chuno<input id="f" type="file" accept="image/*,application/pdf" multiple hidden></label>
-<div class="card" style="margin:10px 0;background:var(--bg)"><b>🤖 AI Vision (best, free Gemini key)</b>
-<p class="mu" style="margin:4px 0">Free key: aistudio.google.com → "Get API key". Key sirf aapke browser me rehti hai.</p>
-<div class="row"><input type="text" id="key" placeholder="Gemini API key" style="width:58%"><input type="text" id="mdl" value="gemini-2.5-flash" style="width:38%"></div>
-<button id="ai" style="margin-top:8px" disabled>AI Vision se quiz banao</button></div>
-<div class="row" style="margin-top:10px"><label class="mu"><input type="checkbox" id="bw"> Black-white filter (dhundhli photo ke liye)</label>
-<button id="ocr" disabled>OCR chalao</button></div>
-<div class="bar"><i id="pb"></i></div><div class="mu" id="st">Pehli baar language data (~40 MB) download hoga.</div></div>
-
-<div class="card"><h2>2. OCR text (galti ho to yahin theek karo)</h2>
-<textarea id="tx" rows="9" placeholder="OCR ka text yahan aayega. Format: Q1. sawal  Ans: jawab"></textarea>
-<div class="row" style="margin-top:8px"><span class="mu">Markers: Q / प्रश्न / પ્રશ્ન aur Ans / उत्तर / જવાબ</span><button id="ps">MCQ banao</button></div></div>
-
-<div class="card hide" id="rv"><h2>3. Check aur edit karo</h2><div id="list"></div>
-<div class="row"><button class="g" id="add">+ Question</button><button id="play">▶ Quiz shuru</button></div></div>
-
-<div class="card hide" id="fg"><h2>Diagram / graph jodo</h2>
-<div class="row" style="margin-bottom:8px"><select id="fp" style="width:48%"></select><select id="fq" style="width:48%"></select></div>
-<canvas id="cv"></canvas><div class="row" style="margin-top:8px"><span class="mu">Figure ke upar box kheencho</span><button id="fa">Question me jodo</button></div></div>
-
+<div class="card" id="up">
+  <label class="drop" id="dl">📄 PDF ya photos chuno<input id="f" type="file" accept="application/pdf,image/*" multiple hidden></label>
+  <div id="rg" class="row hide" style="margin-top:10px"><span class="mu" id="tot"></span>
+    <span class="mu">Page <input type="number" id="p1" min="1" value="1"> se <input type="number" id="p2" min="1" value="1"> tak</span></div>
+  <div class="row" style="margin-top:10px"><span class="mu" id="st"></span><button id="go" disabled>Quiz banao</button></div>
+  <div class="bar"><i id="pb"></i></div><div id="log"></div>
+</div>
 <div id="qz"></div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
+/* >>> Worker deploy karne ke baad yahan apna URL paste karo <<< */
+const PROXY='https://blue-field-2ba2.vveerv8.workers.dev';
+const MAXPAGES=60;
 const $=id=>document.getElementById(id);
-let pages=[],Q=[],cur=0,score=0,done=false,sel=null;
 const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let pdf=null,imgs=[],Q=[],cur=0,score=0,done=false;
 
-/* ---------- load files ---------- */
 $('f').onchange=async e=>{
-  $('st').textContent='Pages load ho rahe hain…';
-  for(const f of e.target.files){
-    try{ if(f.type==='application/pdf') await loadPdf(f); else {const b=await createImageBitmap(f);addPage(b,b.width,b.height)} }
-    catch(err){$('st').textContent='Padh nahi paya: '+f.name}
-  }
-  $('st').textContent=pages.length+' page(s) ready';$('ocr').disabled=$('ai').disabled=!pages.length;fillPages();
-};
-function addPage(src,w,h){const s=Math.min(1,2400/Math.max(w,h)),c=document.createElement('canvas');
-  c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(src,0,0,c.width,c.height);pages.push(c)}
-const loadScript=u=>new Promise((r,j)=>{const s=document.createElement('script');s.src=u;s.onload=r;s.onerror=j;document.head.appendChild(s)});
-async function loadPdf(f){
-  const B='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
-  if(!window.pdfjsLib){await loadScript(B+'pdf.min.js');await loadScript(B+'pdf.worker.min.js')}
-  const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
-  for(let i=1;i<=Math.min(pdf.numPages,40);i++){
-    const p=await pdf.getPage(i),v=p.getViewport({scale:2.2}),c=document.createElement('canvas');
-    c.width=v.width;c.height=v.height;await p.render({canvasContext:c.getContext('2d'),viewport:v}).promise;addPage(c,c.width,c.height)}
-}
-
-/* ---------- OCR ---------- */
-function prep(c){
-  const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const x=o.getContext('2d');x.drawImage(c,0,0);
-  const d=x.getImageData(0,0,o.width,o.height),a=d.data,n=a.length/4,g=new Uint8Array(n),h=new Uint32Array(256);
-  for(let i=0;i<n;i++){const v=(a[4*i]*.3+a[4*i+1]*.59+a[4*i+2]*.11)|0;g[i]=v;h[v]++}
-  let lo=0,hi=255,s=0;while(lo<255&&(s+=h[lo])<n*.01)lo++;s=0;while(hi>0&&(s+=h[hi])<n*.01)hi--;
-  const bw=$('bw').checked;let T=128;
-  if(bw){let sum=0;for(let i=0;i<256;i++)sum+=i*h[i];let sb=0,wb=0,mx=0;for(let t=0;t<256;t++){wb+=h[t];if(!wb)continue;const wf=n-wb;if(!wf)break;sb+=t*h[t];const mb=sb/wb,mf=(sum-sb)/wf,v=wb*wf*(mb-mf)*(mb-mf);if(v>mx){mx=v;T=t}}}
-  for(let i=0;i<n;i++){let v=Math.max(0,Math.min(255,(g[i]-lo)*255/Math.max(1,hi-lo)));if(bw)v=v>T?255:0;a[4*i]=a[4*i+1]=a[4*i+2]=v}
-  x.putImageData(d,0,0);return o;
-}
-$('ocr').onclick=async()=>{
-  $('ocr').disabled=true;$('tx').value='';let txt='';
+  pdf=null;imgs=[];$('log').replaceChildren();$('rg').classList.add('hide');
+  const files=[...e.target.files];if(!files.length)return;
   try{
-    const w=await Tesseract.createWorker('hin+guj+eng',1,{logger:m=>{if(m.status)$('st').textContent=m.status+' '+Math.round((m.progress||0)*100)+'%'}});
-    for(let i=0;i<pages.length;i++){
-      $('pb').style.width=(i/pages.length*100)+'%';
-      const r=await w.recognize(prep(pages[i]));txt+=r.data.text.trim()+'\n\n';$('tx').value=txt;
+    const p=files.find(f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name));
+    if(p){
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdf=await pdfjsLib.getDocument({data:await p.arrayBuffer()}).promise;
+      $('tot').textContent=`${p.name}: ${pdf.numPages} pages`;$('p1').max=$('p2').max=pdf.numPages;
+      $('p1').value=1;$('p2').value=Math.min(pdf.numPages,20);$('rg').classList.remove('hide');
+      $('st').textContent='Pages chuno (shuru me 10–20 pages se try karo).';
+    }else{
+      for(const f of files)imgs.push(await createImageBitmap(f));
+      $('st').textContent=imgs.length+' photo(s) ready';
     }
-    await w.terminate();$('pb').style.width='100%';$('st').textContent='OCR ho gaya. Text check karke "MCQ banao" dabao.';
-  }catch(e){$('st').textContent='OCR error: '+(e.message||e)+' (internet check karo)'}
-  $('ocr').disabled=false;
+    $('go').disabled=false;
+  }catch(err){$('st').textContent='File khul nahi payi. Dusra PDF/photo try karo.';$('go').disabled=true}
 };
 
-/* ---------- parse Q/A -> MCQ ---------- */
-const WQ=/^\s*(?:Q(?:uestion)?|प्रश्न|પ્રશ્ન)\s*\.?\s*\d*\s*[:.)\-–]?\s*/i;
-const NQ=/^\s*\d{1,3}\s*[.)]\s+/;
-const AM=/(?:^|\s)(?:Ans(?:wer)?|उत्तर|ઉત્તર|જવાબ)\s*[:：.\-–)]\s*/i;
-const OP=/^\s*\(?([A-Da-d1-4])[.)]\s*(.+)/;
-const clean=s=>s.replace(/\s+/g,' ').trim();
-function parse(text){
-  const blocks=[];let b=null;
-  for(const line of text.split('\n')){
-    const word=WQ.test(line)&&line.replace(WQ,'')!==line, num=NQ.test(line)&&b&&AM.test(b.join('\n'));
-    if(word||num||!b){b=[];blocks.push(b)}
-    b.push(line);
-  }
-  const out=[];
-  for(const bl of blocks){
-    const t=bl.join('\n'),m=t.match(AM);if(!m)continue;
-    const qpart=t.slice(0,m.index).replace(WQ,'').replace(NQ,''),apart=clean(t.slice(m.index+m[0].length));
-    if(!clean(qpart)||!apart)continue;
-    const ql=qpart.split('\n'),qs=[],ops=[];
-    for(const l of ql){const o=l.match(OP);if(o&&qs.length)ops.push([o[1],clean(o[2])]);else if(!ops.length)qs.push(l);else ops[ops.length-1][1]+=' '+clean(l)}
-    const item={q:clean(qs.join(' ')),fig:null,raw:apart};
-    if(ops.length>=2){
-      item.opts=ops.map(o=>o[1]);const k=apart.match(/^\(?([A-Da-d1-4])\)?(?:[\s.,)]|$)/);
-      let i=k?'abcd1234'.indexOf(k[1].toLowerCase())%4:-1;
-      if(i<0||i>=ops.length){i=item.opts.findIndex(o=>apart.toLowerCase().includes(o.toLowerCase()));if(i<0){item.opts.push(apart.slice(0,150));i=item.opts.length-1}}
-      item.ans=i;
-    }else item.plain=apart.slice(0,150);
-    out.push(item);
-  }
-  const pool=out.filter(x=>x.plain).map(x=>x.plain);
-  for(const x of out)if(x.plain){
-    const d=pool.filter(p=>p!==x.plain).sort(()=>Math.random()-.5).slice(0,3),o=[x.plain,...d].sort(()=>Math.random()-.5);
-    x.opts=o;x.ans=o.indexOf(x.plain);delete x.plain;
-  }
-  return out;
+async function pageCanvas(i){            // i: 0-based job index
+  let src,w,h;
+  if(pdf){const pg=await pdf.getPage(i);const v0=pg.getViewport({scale:1}),s=1500/Math.max(v0.width,v0.height),v=pg.getViewport({scale:s});
+    const c=document.createElement('canvas');c.width=v.width;c.height=v.height;await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise;return c}
+  src=imgs[i];w=src.width;h=src.height;const s=Math.min(1,1500/Math.max(w,h)),c=document.createElement('canvas');
+  c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c;
 }
-$('ps').onclick=()=>{Q=parse($('tx').value);$('rv').classList.toggle('hide',!Q.length);$('fg').classList.toggle('hide',!Q.length);
-  if(!Q.length){$('st').textContent='Koi Q/Ans nahi mila. "Ans:" / "उत्तर:" / "જવાબ:" marker check karo.';return}
-  render();fillQ();draw()};
-
-
-/* ---------- AI vision (Gemini free tier) ---------- */
-try{$('key').value=localStorage.getItem('gk')||''}catch(e){}
-const PROMPT=`You are reading one page of a school/college book photo. Text may be Hindi (Devanagari), English or Gujarati, possibly mixed.
-Find every question with its answer on the page (Q&A pairs, or existing MCQs). Convert each into a 4-option MCQ.
-Rules: keep question/options in the SAME language and script as the book, never translate. Use the book's own answer as the correct option; if only Q&A is given, make 3 plausible wrong options in the same language. If a question refers to a figure/graph/diagram/shape, give its bounding box on THIS image as "fig":[x,y,w,h] in 0-1000 normalized units (x,y top-left), tight around the figure only; else "fig":null. If the page shows two languages side by side, keep both in the question exactly as printed. If the page has NO answer key/answer, solve it yourself, pick the best option and set "guess":true (else false). Do not invent questions that are not on the page.
-Reply ONLY JSON: {"questions":[{"q":"","options":["","","",""],"answer":0,"guess":false,"fig":null}]}  ("answer" = index 0-3)`;
-async function gem(canvas,key,model){
-  const b64=canvas.toDataURL('image/jpeg',.8).split(',')[1];
-  for(let t=0;t<3;t++){
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',
-      headers:{'Content-Type':'application/json','x-goog-api-key':key},
-      body:JSON.stringify({contents:[{parts:[{text:PROMPT},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],generationConfig:{responseMimeType:'application/json'}})});
-    if(r.status===429){await new Promise(z=>setTimeout(z,8000*(t+1)));continue}
-    const j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);
-    const txt=j.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'{}';
-    return JSON.parse(txt.replace(/```json|```/g,'').trim()).questions||[];
+async function ask(canvas){
+  const image=canvas.toDataURL('image/jpeg',.82).split(',')[1];
+  let last='';
+  for(let t=0;t<5;t++){
+    try{
+      const r=await fetch(PROXY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image})});
+      const j=await r.json().catch(()=>({}));
+      if(r.ok)return j.questions||[];
+      last=j.error||('HTTP '+r.status);
+      if(r.status===400||r.status===500)throw new Error(last);
+    }catch(e){last=e.message||String(e);if(/GEMINI|image|bad/i.test(last))throw e;if(e instanceof TypeError&&t>=1)throw new Error('Worker URL galat hai ya internet nahi hai')}
+    await sleep(7000*(t+1));            // free quota: ruk kar dobara
   }
-  throw new Error('Rate limit (free quota). Thodi der baad try karo.');
+  throw new Error(last||'server jawab nahi de raha');
 }
 function cropFig(c,b){
-  if(!Array.isArray(b)||b.length!==4)return null;const [x,y,w,h]=b.map(Number);if(![x,y,w,h].every(isFinite)||w<20||h<20)return null;
-  const p=15,X=Math.max(0,x-p)/1000*c.width,Y=Math.max(0,y-p)/1000*c.height,W=Math.min(c.width-X,(w+2*p)/1000*c.width),H=Math.min(c.height-Y,(h+2*p)/1000*c.height);
-  const o=document.createElement('canvas');o.width=W;o.height=H;o.getContext('2d').drawImage(c,X,Y,W,H,0,0,W,H);return o.toDataURL('image/jpeg',.9);
+  if(!Array.isArray(b))return null;const [x,y,w,h]=b;if(w<30||h<30)return null;const p=15;
+  const X=Math.max(0,x-p)/1000*c.width,Y=Math.max(0,y-p)/1000*c.height,W=Math.min(c.width-X,(w+2*p)/1000*c.width),H=Math.min(c.height-Y,(h+2*p)/1000*c.height);
+  if(W<20||H<20)return null;const o=document.createElement('canvas');o.width=W;o.height=H;o.getContext('2d').drawImage(c,X,Y,W,H,0,0,W,H);return o.toDataURL('image/jpeg',.9);
 }
-$('ai').onclick=async()=>{
-  const key=$('key').value.trim(),model=$('mdl').value.trim();if(!key){$('st').textContent='Pehle Gemini API key daalo.';return}
-  try{localStorage.setItem('gk',key)}catch(e){}
-  $('ai').disabled=true;const res=[];let next=0,done=0,fail=0,lastErr='';
-  const shrink=c=>{const s=Math.min(1,1400/Math.max(c.width,c.height)),o=document.createElement('canvas');o.width=c.width*s;o.height=c.height*s;o.getContext('2d').drawImage(c,0,0,o.width,o.height);return o};
-  async function worker(){while(true){const i=next++;if(i>=pages.length)return;
-    try{const sm=shrink(pages[i]);res[i]=(await gem(sm,key,model)).filter(q=>q.q&&Array.isArray(q.options)&&q.options.length>1).map(q=>({q:q.q,opts:q.options.map(String),ans:Number(q.answer)||0,guess:!!q.guess,fig:cropFig(sm,q.fig)}))}
-    catch(e){fail++;lastErr=e.message}
-    done++;$('pb').style.width=(done/pages.length*100)+'%';$('st').textContent=`${done}/${pages.length} pages padh liye`}}
+function shuffle(q){const idx=q.options.map((_,i)=>i).sort(()=>Math.random()-.5);return{...q,options:idx.map(i=>q.options[i]),answer:idx.indexOf(q.answer)}}
+function log(t,bad){const d=el('div',bad?'err':'',t);$('log').append(d);$('log').scrollTop=1e9}
+
+$('go').onclick=async()=>{
+  if(!PROXY||PROXY.startsWith('PASTE')){$('st').textContent='Worker URL set nahi hai (index.html me PROXY line).';return}
+  let from,to;if(pdf){from=Math.max(1,+$('p1').value||1);to=Math.min(pdf.numPages,+$('p2').value||from);if(to<from)to=from;if(to-from+1>MAXPAGES)to=from+MAXPAGES-1}
+  else{from=0;to=imgs.length-1}
+  const list=[];for(let i=from;i<=to;i++)list.push(i);
+  $('go').disabled=true;$('qz').replaceChildren();$('log').replaceChildren();Q=[];
+  const res=[];let next=0,fin=0,fail=0;
+  async function worker(){
+    while(true){const k=next++;if(k>=list.length)return;const i=list[k],label=pdf?'Page '+i:'Photo '+(i+1);
+      try{
+        const c=await pageCanvas(i),qs=await ask(c);
+        res[k]=qs.map(q=>shuffle({...q,fig:cropFig(c,q.fig)}));
+        log(`${label}: ${qs.length} question`);
+      }catch(e){fail++;log(`${label}: nahi hua (${e.message})`,true)}
+      fin++;$('pb').style.width=(fin/list.length*100)+'%';$('st').textContent=`${fin}/${list.length} pages ho gaye…`;
+    }
+  }
   await Promise.all([worker(),worker()]);
-  Q=[];res.forEach(a=>a&&Q.push(...a));
-  $('st').textContent=Q.length+' questions mile'+(fail?` (${fail} page fail: ${lastErr})`:'');
-  $('ai').disabled=false;$('rv').classList.toggle('hide',!Q.length);$('fg').classList.toggle('hide',!Q.length);
-  if(Q.length){render();fillQ();draw()}
+  res.forEach(a=>a&&Q.push(...a));
+  $('go').disabled=false;
+  if(!Q.length){$('st').textContent=fail?'Koi quiz nahi bana. Neeche error dekho.':'In pages me question nahi mile. Dusre pages try karo.';return}
+  $('st').textContent=`${Q.length} questions ready`+(fail?` (${fail} page fail — dobara try kar sakte ho)`:'');
+  cur=0;score=0;show();$('qz').scrollIntoView({behavior:'smooth'});
 };
 
-/* ---------- review / edit ---------- */
-function render(){
-  const L=$('list');L.replaceChildren();
-  Q.forEach((q,qi)=>{
-    const c=el('div','card');c.append(el('div','mu','Q'+(qi+1)+(q.guess?'  ⚠ AI ka andaza, answer check karo':'')));
-    const ta=el('textarea');ta.rows=2;ta.value=q.q;ta.oninput=()=>q.q=ta.value;c.append(ta);
-    if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';const rm=el('button','g','Figure hatao');rm.onclick=()=>{q.fig=null;render()};c.append(im,rm)}
-    q.opts.forEach((o,oi)=>{
-      const r=el('div','oi'),rd=el('input');rd.type='radio';rd.name='r'+qi;rd.checked=oi===q.ans;rd.onchange=()=>q.ans=oi;
-      const tx=el('input');tx.type='text';tx.value=o;tx.oninput=()=>q.opts[oi]=tx.value;
-      const x=el('button','g','✕');x.onclick=()=>{q.opts.splice(oi,1);if(q.ans>=q.opts.length)q.ans=0;render()};r.append(rd,tx,x);c.append(r)});
-    const row=el('div','row'),ao=el('button','g','+ Option'),dq=el('button','g','Question hatao');
-    ao.onclick=()=>{q.opts.push('');render()};dq.onclick=()=>{Q.splice(qi,1);render();fillQ()};row.append(ao,dq);c.append(row);L.append(c)});
-}
-$('add').onclick=()=>{Q.push({q:'',opts:['','','',''],ans:0,fig:null});render();fillQ()};
-
-/* ---------- manual figure crop ---------- */
-const cv=$('cv'),cx=cv.getContext('2d');
-function fillPages(){$('fp').replaceChildren(...pages.map((_,i)=>{const o=el('option',0,'Page '+(i+1));o.value=i;return o}))}
-function fillQ(){$('fq').replaceChildren(...Q.map((_,i)=>{const o=el('option',0,'Question '+(i+1));o.value=i;return o}))}
-$('fp').onchange=()=>{sel=null;draw()};
-function draw(){const p=pages[+$('fp').value||0];if(!p){cv.width=cv.height=0;return}
-  cv.width=p.width;cv.height=p.height;cx.drawImage(p,0,0);
-  if(sel){cx.strokeStyle='#e03131';cx.lineWidth=Math.max(3,p.width/300);cx.strokeRect(sel.x,sel.y,sel.w,sel.h)}}
-let st0=null;const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height}};
-cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);st0=pt(e);sel=null};
-cv.onpointermove=e=>{if(!st0)return;const p=pt(e);sel={x:Math.min(st0.x,p.x),y:Math.min(st0.y,p.y),w:Math.abs(p.x-st0.x),h:Math.abs(p.y-st0.y)};draw()};
-cv.onpointerup=()=>st0=null;
-$('fa').onclick=()=>{
-  if(!sel||sel.w<10||sel.h<10||!Q.length)return;
-  const o=document.createElement('canvas');o.width=sel.w;o.height=sel.h;
-  o.getContext('2d').drawImage(pages[+$('fp').value],sel.x,sel.y,sel.w,sel.h,0,0,sel.w,sel.h);
-  Q[+$('fq').value].fig=o.toDataURL('image/jpeg',.9);sel=null;draw();render();
-};
-
-/* ---------- quiz ---------- */
-$('play').onclick=()=>{Q=Q.filter(q=>q.q.trim()&&q.opts.filter(o=>o.trim()).length>1);cur=0;score=0;show();$('qz').scrollIntoView()};
 function show(){
   const root=$('qz');root.replaceChildren();done=false;
   if(cur>=Q.length){const d=el('div','card');d.append(el('h2',0,`Score: ${score} / ${Q.length}`));
-    const b=el('button',0,'Dobara');b.onclick=()=>{cur=0;score=0;show()};d.append(b);root.append(d);return}
+    const b=el('button',0,'Dobara khelo'),n=el('button','g','Naya PDF');b.onclick=()=>{Q.sort(()=>Math.random()-.5);cur=0;score=0;show()};n.onclick=()=>location.reload();
+    d.append(b,' ',n);root.append(d);return}
   const q=Q[cur],d=el('div','card'),r=el('div','row');
-  r.append(el('span','mu',`Q ${cur+1}/${Q.length}`),el('span','mu','Score '+score));
+  r.append(el('span','mu',`Question ${cur+1} / ${Q.length}`),el('span','mu','Score '+score));
   const bar=el('div','bar');bar.innerHTML='<i></i>';bar.firstChild.style.width=(cur/Q.length*100)+'%';
   d.append(r,bar,el('h3',0,q.q));
+  if(q.guess)d.append(el('div','mu','⚠ Is page par answer nahi tha, AI ne andaza lagaya hai.'));
   if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';d.append(im)}
-  const ans=q.opts[q.ans];
-  q.opts.forEach((o,i)=>{if(!o.trim())return;const b=el('button','opt',o);b.onclick=()=>{
-    if(done)return;done=true;const ok=i===q.ans;if(ok)score++;b.classList.add(ok?'ok':'bad');
-    [...d.querySelectorAll('.opt')].find(x=>x.textContent===ans)?.classList.add('ok');
+  q.options.forEach((o,i)=>{const b=el('button','opt',o);b.onclick=()=>{
+    if(done)return;done=true;const ok=i===q.answer;if(ok)score++;b.classList.add(ok?'ok':'bad');
+    d.querySelectorAll('.opt')[q.answer].classList.add('ok');
     const n=el('button',0,cur+1<Q.length?'Next →':'Result');n.style.marginTop='10px';n.onclick=()=>{cur++;show()};d.append(n)};d.append(b)});
   root.append(d);
 }
