@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="hi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book → MCQ Quiz (Free OCR prototype)</title>
+<style>
+:root{--bg:#f7f6f2;--card:#fff;--tx:#1d1d1b;--mu:#6b6a64;--ac:#3b5bdb;--ok:#2b8a3e;--bad:#c92a2a;--bd:#e2e0d8}
+@media(prefers-color-scheme:dark){:root{--bg:#17171a;--card:#222226;--tx:#ecebe6;--mu:#a09f98;--ac:#7c93ff;--ok:#69db7c;--bad:#ff8787;--bd:#34343a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,"Noto Sans Devanagari","Noto Sans Gujarati",sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}h1{font-size:22px;margin:8px 0}h2{font-size:17px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:14px}
+.mu{color:var(--mu);font-size:14px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+button{font:inherit;border:0;border-radius:10px;padding:9px 14px;background:var(--ac);color:#fff;cursor:pointer}
+button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}button:disabled{opacity:.5}
+textarea,input[type=text],select{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px}
+.drop{display:block;border:2px dashed var(--bd);border-radius:12px;padding:22px;text-align:center;cursor:pointer;color:var(--mu)}
+.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--ac);width:0}
+.opt{display:block;width:100%;text-align:left;margin:8px 0;background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+.opt.ok{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,var(--card))}
+.opt.bad{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 15%,var(--card))}
+.fig{max-width:100%;border:1px solid var(--bd);border-radius:8px;background:#fff;margin:6px 0}
+.oi{display:flex;gap:6px;margin:4px 0;align-items:center}.oi input[type=radio]{flex:none}
+#cv{width:100%;touch-action:none;border:1px solid var(--bd);border-radius:8px;cursor:crosshair}
+.hide{display:none}
+</style></head><body><main>
+<h1>📚 Book → MCQ Quiz <span class="mu">(free OCR prototype)</span></h1>
+<p class="mu">Hindi / English / ગુજરાતી · Tesseract OCR browser me chalta hai, koi paid AI nahi.</p>
+
+<div class="card"><h2>1. Photos / PDF</h2>
+<label class="drop">📷 Photos ya PDF chuno<input id="f" type="file" accept="image/*,application/pdf" multiple hidden></label>
+<div class="row" style="margin-top:10px"><label class="mu"><input type="checkbox" id="bw"> Black-white filter (dhundhli photo ke liye)</label>
+<button id="ocr" disabled>OCR chalao</button></div>
+<div class="bar"><i id="pb"></i></div><div class="mu" id="st">Pehli baar language data (~40 MB) download hoga.</div></div>
+
+<div class="card"><h2>2. OCR text (galti ho to yahin theek karo)</h2>
+<textarea id="tx" rows="9" placeholder="OCR ka text yahan aayega. Format: Q1. sawal  Ans: jawab"></textarea>
+<div class="row" style="margin-top:8px"><span class="mu">Markers: Q / प्रश्न / પ્રશ્ન aur Ans / उत्तर / જવાબ</span><button id="ps">MCQ banao</button></div></div>
+
+<div class="card hide" id="rv"><h2>3. Check aur edit karo</h2><div id="list"></div>
+<div class="row"><button class="g" id="add">+ Question</button><button id="play">▶ Quiz shuru</button></div></div>
+
+<div class="card hide" id="fg"><h2>Diagram / graph jodo</h2>
+<div class="row" style="margin-bottom:8px"><select id="fp" style="width:48%"></select><select id="fq" style="width:48%"></select></div>
+<canvas id="cv"></canvas><div class="row" style="margin-top:8px"><span class="mu">Figure ke upar box kheencho</span><button id="fa">Question me jodo</button></div></div>
+
+<div id="qz"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let pages=[],Q=[],cur=0,score=0,done=false,sel=null;
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+
+/* ---------- load files ---------- */
+$('f').onchange=async e=>{
+  $('st').textContent='Pages load ho rahe hain…';
+  for(const f of e.target.files){
+    try{ if(f.type==='application/pdf') await loadPdf(f); else {const b=await createImageBitmap(f);addPage(b,b.width,b.height)} }
+    catch(err){$('st').textContent='Padh nahi paya: '+f.name}
+  }
+  $('st').textContent=pages.length+' page(s) ready';$('ocr').disabled=!pages.length;fillPages();
+};
+function addPage(src,w,h){const s=Math.min(1,2400/Math.max(w,h)),c=document.createElement('canvas');
+  c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(src,0,0,c.width,c.height);pages.push(c)}
+const loadScript=u=>new Promise((r,j)=>{const s=document.createElement('script');s.src=u;s.onload=r;s.onerror=j;document.head.appendChild(s)});
+async function loadPdf(f){
+  const B='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  if(!window.pdfjsLib){await loadScript(B+'pdf.min.js');await loadScript(B+'pdf.worker.min.js')}
+  const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+  for(let i=1;i<=Math.min(pdf.numPages,40);i++){
+    const p=await pdf.getPage(i),v=p.getViewport({scale:2.2}),c=document.createElement('canvas');
+    c.width=v.width;c.height=v.height;await p.render({canvasContext:c.getContext('2d'),viewport:v}).promise;addPage(c,c.width,c.height)}
+}
+
+/* ---------- OCR ---------- */
+function prep(c){
+  const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const x=o.getContext('2d');x.drawImage(c,0,0);
+  const d=x.getImageData(0,0,o.width,o.height),a=d.data,n=a.length/4,g=new Uint8Array(n),h=new Uint32Array(256);
+  for(let i=0;i<n;i++){const v=(a[4*i]*.3+a[4*i+1]*.59+a[4*i+2]*.11)|0;g[i]=v;h[v]++}
+  let lo=0,hi=255,s=0;while(lo<255&&(s+=h[lo])<n*.01)lo++;s=0;while(hi>0&&(s+=h[hi])<n*.01)hi--;
+  const bw=$('bw').checked;let T=128;
+  if(bw){let sum=0;for(let i=0;i<256;i++)sum+=i*h[i];let sb=0,wb=0,mx=0;for(let t=0;t<256;t++){wb+=h[t];if(!wb)continue;const wf=n-wb;if(!wf)break;sb+=t*h[t];const mb=sb/wb,mf=(sum-sb)/wf,v=wb*wf*(mb-mf)*(mb-mf);if(v>mx){mx=v;T=t}}}
+  for(let i=0;i<n;i++){let v=Math.max(0,Math.min(255,(g[i]-lo)*255/Math.max(1,hi-lo)));if(bw)v=v>T?255:0;a[4*i]=a[4*i+1]=a[4*i+2]=v}
+  x.putImageData(d,0,0);return o;
+}
+$('ocr').onclick=async()=>{
+  $('ocr').disabled=true;$('tx').value='';let txt='';
+  try{
+    const w=await Tesseract.createWorker('hin+guj+eng',1,{logger:m=>{if(m.status)$('st').textContent=m.status+' '+Math.round((m.progress||0)*100)+'%'}});
+    for(let i=0;i<pages.length;i++){
+      $('pb').style.width=(i/pages.length*100)+'%';
+      const r=await w.recognize(prep(pages[i]));txt+=r.data.text.trim()+'\n\n';$('tx').value=txt;
+    }
+    await w.terminate();$('pb').style.width='100%';$('st').textContent='OCR ho gaya. Text check karke "MCQ banao" dabao.';
+  }catch(e){$('st').textContent='OCR error: '+(e.message||e)+' (internet check karo)'}
+  $('ocr').disabled=false;
+};
+
+/* ---------- parse Q/A -> MCQ ---------- */
+const WQ=/^\s*(?:Q(?:uestion)?|प्रश्न|પ્રશ્ન)\s*\.?\s*\d*\s*[:.)\-–]?\s*/i;
+const NQ=/^\s*\d{1,3}\s*[.)]\s+/;
+const AM=/(?:^|\s)(?:Ans(?:wer)?|उत्तर|ઉત્તર|જવાબ)\s*[:：.\-–)]\s*/i;
+const OP=/^\s*\(?([A-Da-d1-4])[.)]\s*(.+)/;
+const clean=s=>s.replace(/\s+/g,' ').trim();
+function parse(text){
+  const blocks=[];let b=null;
+  for(const line of text.split('\n')){
+    const word=WQ.test(line)&&line.replace(WQ,'')!==line, num=NQ.test(line)&&b&&AM.test(b.join('\n'));
+    if(word||num||!b){b=[];blocks.push(b)}
+    b.push(line);
+  }
+  const out=[];
+  for(const bl of blocks){
+    const t=bl.join('\n'),m=t.match(AM);if(!m)continue;
+    const qpart=t.slice(0,m.index).replace(WQ,'').replace(NQ,''),apart=clean(t.slice(m.index+m[0].length));
+    if(!clean(qpart)||!apart)continue;
+    const ql=qpart.split('\n'),qs=[],ops=[];
+    for(const l of ql){const o=l.match(OP);if(o&&qs.length)ops.push([o[1],clean(o[2])]);else if(!ops.length)qs.push(l);else ops[ops.length-1][1]+=' '+clean(l)}
+    const item={q:clean(qs.join(' ')),fig:null,raw:apart};
+    if(ops.length>=2){
+      item.opts=ops.map(o=>o[1]);const k=apart.match(/^\(?([A-Da-d1-4])\)?(?:[\s.,)]|$)/);
+      let i=k?'abcd1234'.indexOf(k[1].toLowerCase())%4:-1;
+      if(i<0||i>=ops.length){i=item.opts.findIndex(o=>apart.toLowerCase().includes(o.toLowerCase()));if(i<0){item.opts.push(apart.slice(0,150));i=item.opts.length-1}}
+      item.ans=i;
+    }else item.plain=apart.slice(0,150);
+    out.push(item);
+  }
+  const pool=out.filter(x=>x.plain).map(x=>x.plain);
+  for(const x of out)if(x.plain){
+    const d=pool.filter(p=>p!==x.plain).sort(()=>Math.random()-.5).slice(0,3),o=[x.plain,...d].sort(()=>Math.random()-.5);
+    x.opts=o;x.ans=o.indexOf(x.plain);delete x.plain;
+  }
+  return out;
+}
+$('ps').onclick=()=>{Q=parse($('tx').value);$('rv').classList.toggle('hide',!Q.length);$('fg').classList.toggle('hide',!Q.length);
+  if(!Q.length){$('st').textContent='Koi Q/Ans nahi mila. "Ans:" / "उत्तर:" / "જવાબ:" marker check karo.';return}
+  render();fillQ();draw()};
+
+/* ---------- review / edit ---------- */
+function render(){
+  const L=$('list');L.replaceChildren();
+  Q.forEach((q,qi)=>{
+    const c=el('div','card');c.append(el('div','mu','Q'+(qi+1)));
+    const ta=el('textarea');ta.rows=2;ta.value=q.q;ta.oninput=()=>q.q=ta.value;c.append(ta);
+    if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';const rm=el('button','g','Figure hatao');rm.onclick=()=>{q.fig=null;render()};c.append(im,rm)}
+    q.opts.forEach((o,oi)=>{
+      const r=el('div','oi'),rd=el('input');rd.type='radio';rd.name='r'+qi;rd.checked=oi===q.ans;rd.onchange=()=>q.ans=oi;
+      const tx=el('input');tx.type='text';tx.value=o;tx.oninput=()=>q.opts[oi]=tx.value;
+      const x=el('button','g','✕');x.onclick=()=>{q.opts.splice(oi,1);if(q.ans>=q.opts.length)q.ans=0;render()};r.append(rd,tx,x);c.append(r)});
+    const row=el('div','row'),ao=el('button','g','+ Option'),dq=el('button','g','Question hatao');
+    ao.onclick=()=>{q.opts.push('');render()};dq.onclick=()=>{Q.splice(qi,1);render();fillQ()};row.append(ao,dq);c.append(row);L.append(c)});
+}
+$('add').onclick=()=>{Q.push({q:'',opts:['','','',''],ans:0,fig:null});render();fillQ()};
+
+/* ---------- manual figure crop ---------- */
+const cv=$('cv'),cx=cv.getContext('2d');
+function fillPages(){$('fp').replaceChildren(...pages.map((_,i)=>{const o=el('option',0,'Page '+(i+1));o.value=i;return o}))}
+function fillQ(){$('fq').replaceChildren(...Q.map((_,i)=>{const o=el('option',0,'Question '+(i+1));o.value=i;return o}))}
+$('fp').onchange=()=>{sel=null;draw()};
+function draw(){const p=pages[+$('fp').value||0];if(!p){cv.width=cv.height=0;return}
+  cv.width=p.width;cv.height=p.height;cx.drawImage(p,0,0);
+  if(sel){cx.strokeStyle='#e03131';cx.lineWidth=Math.max(3,p.width/300);cx.strokeRect(sel.x,sel.y,sel.w,sel.h)}}
+let st0=null;const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height}};
+cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);st0=pt(e);sel=null};
+cv.onpointermove=e=>{if(!st0)return;const p=pt(e);sel={x:Math.min(st0.x,p.x),y:Math.min(st0.y,p.y),w:Math.abs(p.x-st0.x),h:Math.abs(p.y-st0.y)};draw()};
+cv.onpointerup=()=>st0=null;
+$('fa').onclick=()=>{
+  if(!sel||sel.w<10||sel.h<10||!Q.length)return;
+  const o=document.createElement('canvas');o.width=sel.w;o.height=sel.h;
+  o.getContext('2d').drawImage(pages[+$('fp').value],sel.x,sel.y,sel.w,sel.h,0,0,sel.w,sel.h);
+  Q[+$('fq').value].fig=o.toDataURL('image/jpeg',.9);sel=null;draw();render();
+};
+
+/* ---------- quiz ---------- */
+$('play').onclick=()=>{Q=Q.filter(q=>q.q.trim()&&q.opts.filter(o=>o.trim()).length>1);cur=0;score=0;show();$('qz').scrollIntoView()};
+function show(){
+  const root=$('qz');root.replaceChildren();done=false;
+  if(cur>=Q.length){const d=el('div','card');d.append(el('h2',0,`Score: ${score} / ${Q.length}`));
+    const b=el('button',0,'Dobara');b.onclick=()=>{cur=0;score=0;show()};d.append(b);root.append(d);return}
+  const q=Q[cur],d=el('div','card'),r=el('div','row');
+  r.append(el('span','mu',`Q ${cur+1}/${Q.length}`),el('span','mu','Score '+score));
+  const bar=el('div','bar');bar.innerHTML='<i></i>';bar.firstChild.style.width=(cur/Q.length*100)+'%';
+  d.append(r,bar,el('h3',0,q.q));
+  if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';d.append(im)}
+  const ans=q.opts[q.ans];
+  q.opts.forEach((o,i)=>{if(!o.trim())return;const b=el('button','opt',o);b.onclick=()=>{
+    if(done)return;done=true;const ok=i===q.ans;if(ok)score++;b.classList.add(ok?'ok':'bad');
+    [...d.querySelectorAll('.opt')].find(x=>x.textContent===ans)?.classList.add('ok');
+    const n=el('button',0,cur+1<Q.length?'Next →':'Result');n.style.marginTop='10px';n.onclick=()=>{cur++;show()};d.append(n)};d.append(b)});
+  root.append(d);
+}
+</script></body></html>
