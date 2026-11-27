@@ -27,6 +27,7 @@ input[type=number]{width:70px;font:inherit;padding:6px;border:1px solid var(--bd
   <label class="drop" id="dl">📄 PDF ya photos chuno<input id="f" type="file" accept="application/pdf,image/*" multiple hidden></label>
   <div id="rg" class="row hide" style="margin-top:10px"><span class="mu" id="tot"></span>
     <span class="mu">Page <input type="number" id="p1" min="1" value="1"> se <input type="number" id="p2" min="1" value="1"> tak</span></div>
+  <div class="row" style="margin-top:10px"><span class="mu">Mode</span><select id="md" style="font:inherit;padding:6px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)"><option value="acc">Accurate (dheema, behtar answer)</option><option value="fast">Tez (kam accurate)</option></select></div>
   <div class="row" style="margin-top:10px"><span class="mu" id="st"></span><button id="go" disabled>Quiz banao</button></div>
   <div class="bar"><i id="pb"></i></div><div id="log"></div>
 </div>
@@ -37,6 +38,7 @@ input[type=number]{width:70px;font:inherit;padding:6px;border:1px solid var(--bd
 /* >>> Worker deploy karne ke baad yahan apna URL paste karo <<< */
 const PROXY='https://blue-field-2ba2.vveerv8.workers.dev';
 const MAXPAGES=60;
+const isFast=()=>$('md').value==='fast',MX=()=>isFast()?1250:1600;
 const $=id=>document.getElementById(id);
 const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -63,29 +65,31 @@ $('f').onchange=async e=>{
 
 async function pageCanvas(i){            // i: 0-based job index
   let src,w,h;
-  if(pdf){const pg=await pdf.getPage(i);const v0=pg.getViewport({scale:1}),s=1500/Math.max(v0.width,v0.height),v=pg.getViewport({scale:s});
+  if(pdf){const pg=await pdf.getPage(i);const v0=pg.getViewport({scale:1}),s=MX()/Math.max(v0.width,v0.height),v=pg.getViewport({scale:s});
     const c=document.createElement('canvas');c.width=v.width;c.height=v.height;await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise;return c}
-  src=imgs[i];w=src.width;h=src.height;const s=Math.min(1,1500/Math.max(w,h)),c=document.createElement('canvas');
+  src=imgs[i];w=src.width;h=src.height;const s=Math.min(1,MX()/Math.max(w,h)),c=document.createElement('canvas');
   c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c;
 }
 async function ask(canvas,note){
-  const image=canvas.toDataURL('image/jpeg',.82).split(',')[1];
+  const image=canvas.toDataURL('image/jpeg',isFast()?.78:.88).split(',')[1];
+  const fast=isFast();
   let last='';
   for(let t=0;t<5;t++){
     try{
-      const r=await fetch(PROXY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image})});
+      const r=await fetch(PROXY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,fast})});
       const j=await r.json().catch(()=>({}));
       if(r.ok)return j.questions||[];
       last=j.error||('HTTP '+r.status);
       if(r.status===400||r.status===500)throw new Error(last);
     }catch(e){last=e.message||String(e);if(/GEMINI|image|bad/i.test(last))throw e;if(e instanceof TypeError&&t>=1)throw new Error('Worker URL galat hai ya internet nahi hai')}
     if(note)note(`dobara try ${t+1}/5 (${last})`);
-    await sleep(7000*(t+1));            // free quota: ruk kar dobara
+    await sleep(2500*(t+1));            // free quota: ruk kar dobara
   }
   throw new Error(last||'server jawab nahi de raha');
 }
+function svgUrl(s){return typeof s==='string'&&/<svg[\s>]/i.test(s)?'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s):null}
 function cropFig(c,b){
-  if(!Array.isArray(b))return null;const [x,y,w,h]=b;if(w<30||h<30)return null;const p=15;
+  if(!Array.isArray(b))return null;const [x,y,w,h]=b;if(w<30||h<30||w*h>380000||h>550)return null;const p=15;
   const X=Math.max(0,x-p)/1000*c.width,Y=Math.max(0,y-p)/1000*c.height,W=Math.min(c.width-X,(w+2*p)/1000*c.width),H=Math.min(c.height-Y,(h+2*p)/1000*c.height);
   if(W<20||H<20)return null;const o=document.createElement('canvas');o.width=W;o.height=H;o.getContext('2d').drawImage(c,X,Y,W,H,0,0,W,H);return o.toDataURL('image/jpeg',.9);
 }
@@ -105,13 +109,13 @@ $('go').onclick=async()=>{
     while(true){const k=next++;if(k>=list.length)return;const i=list[k],label=pdf?'Page '+i:'Photo '+(i+1);
       try{
         log(`${label}: AI ko bhej raha hoon…`);const c=await pageCanvas(i),qs=await ask(c,m=>log(`${label}: ${m}`));
-        res[k]=qs.map(q=>shuffle({...q,fig:cropFig(c,q.fig)}));
+        res[k]=qs.map(q=>shuffle({...q,fig:svgUrl(q.fig)}));
         log(`${label}: ${qs.length} question`);
       }catch(e){fail++;log(`${label}: nahi hua (${e.message})`,true)}
       fin++;$('pb').style.width=Math.max(3,fin/list.length*100)+'%';
     }
   }
-  await Promise.all([worker(),worker()]);clearInterval(tick);
+  await Promise.all([worker(),worker(),worker()]);clearInterval(tick);
   res.forEach(a=>a&&Q.push(...a));
   $('go').disabled=false;
   if(!Q.length){$('st').textContent=fail?'Koi quiz nahi bana. Neeche error dekho.':'In pages me question nahi mile. Dusre pages try karo.';return}
@@ -129,7 +133,7 @@ function show(){
   const bar=el('div','bar');bar.innerHTML='<i></i>';bar.firstChild.style.width=(cur/Q.length*100)+'%';
   d.append(r,bar,el('h3',0,q.q));
   if(q.guess)d.append(el('div','mu','⚠ Is page par answer nahi tha, AI ne andaza lagaya hai.'));
-  if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';d.append(im)}
+  if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';const hb=el('button','g','Figure galat hai? Hatao');hb.style.fontSize='13px';hb.onclick=()=>{im.remove();hb.remove();q.fig=null};d.append(im,hb)}
   q.options.forEach((o,i)=>{const b=el('button','opt',o);b.onclick=()=>{
     if(done)return;done=true;const ok=i===q.answer;if(ok)score++;b.classList.add(ok?'ok':'bad');
     d.querySelectorAll('.opt')[q.answer].classList.add('ok');
