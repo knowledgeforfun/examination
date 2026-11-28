@@ -19,6 +19,8 @@ input[type=number]{width:70px;font:inherit;padding:6px;border:1px solid var(--bd
 .opt.bad{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 15%,var(--card))}
 .fig{max-width:100%;border:1px solid var(--bd);border-radius:8px;background:#fff;margin:6px 0}
 #log{font-size:13px;color:var(--mu);margin-top:6px;max-height:140px;overflow:auto}.err{color:var(--bad)}.hide{display:none}
+.tb{border-collapse:collapse;width:100%;margin:8px 0;font-size:15px}.tb th,.tb td{border:1px solid var(--bd);padding:6px 8px;text-align:left;vertical-align:top}.tb th{background:var(--bg)}
+.mrow{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}.mol{background:#fff;color:#111;border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center;max-width:100%}.mol canvas{max-width:100%}
 </style></head><body><main>
 <h1>📚 PDF → MCQ Quiz</h1>
 <p class="mu">Book ka PDF (ya photos) daalo. Hindi, English aur ગુજરાતી ke question-answer se quiz apne aap ban jayega.</p>
@@ -27,6 +29,7 @@ input[type=number]{width:70px;font:inherit;padding:6px;border:1px solid var(--bd
   <label class="drop" id="dl">📄 PDF ya photos chuno<input id="f" type="file" accept="application/pdf,image/*" multiple hidden></label>
   <div id="rg" class="row hide" style="margin-top:10px"><span class="mu" id="tot"></span>
     <span class="mu">Page <input type="number" id="p1" min="1" value="1"> se <input type="number" id="p2" min="1" value="1"> tak</span></div>
+  <div class="row" style="margin-top:10px"><label class="mu">🔑 Answer key (optional, sahi answer ke liye): <input type="file" id="kf" accept="application/pdf,image/*" multiple></label></div>
   <div class="row" style="margin-top:10px"><span class="mu">Mode</span><select id="md" style="font:inherit;padding:6px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)"><option value="acc">Accurate (dheema, behtar answer)</option><option value="fast">Tez (kam accurate)</option></select></div>
   <div class="row" style="margin-top:10px"><span class="mu" id="st"></span><button id="go" disabled>Quiz banao</button></div>
   <div class="bar"><i id="pb"></i></div><div id="log"></div>
@@ -34,6 +37,7 @@ input[type=number]{width:70px;font:inherit;padding:6px;border:1px solid var(--bd
 <div id="qz"></div>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/smiles-drawer@2.1.7/dist/smiles-drawer.min.js"></script>
 <script>
 /* >>> Worker deploy karne ke baad yahan apna URL paste karo <<< */
 const PROXY='https://blue-field-2ba2.vveerv8.workers.dev';
@@ -63,6 +67,18 @@ $('f').onchange=async e=>{
   }catch(err){$('st').textContent='File khul nahi payi. Dusra PDF/photo try karo.';$('go').disabled=true}
 };
 
+let keyCv=[];
+$('kf').onchange=async e=>{
+  keyCv=[];
+  try{for(const f of e.target.files){
+    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const d=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+      for(let i=1;i<=Math.min(d.numPages,6);i++){const pg=await d.getPage(i),v0=pg.getViewport({scale:1}),v=pg.getViewport({scale:1600/Math.max(v0.width,v0.height)}),c=document.createElement('canvas');c.width=v.width;c.height=v.height;await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise;keyCv.push(c)}
+    }else{const b=await createImageBitmap(f),s=Math.min(1,1600/Math.max(b.width,b.height)),c=document.createElement('canvas');c.width=b.width*s;c.height=b.height*s;c.getContext('2d').drawImage(b,0,0,c.width,c.height);keyCv.push(c)}
+  }}catch(err){keyCv=[]}
+  $('st').textContent=keyCv.length?`Answer key: ${keyCv.length} page(s) ready`:'Answer key khul nahi payi.';
+};
 async function pageCanvas(i){            // i: 0-based job index
   let src,w,h;
   if(pdf){const pg=await pdf.getPage(i);const v0=pg.getViewport({scale:1}),s=MX()/Math.max(v0.width,v0.height),v=pg.getViewport({scale:s});
@@ -70,15 +86,15 @@ async function pageCanvas(i){            // i: 0-based job index
   src=imgs[i];w=src.width;h=src.height;const s=Math.min(1,MX()/Math.max(w,h)),c=document.createElement('canvas');
   c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c;
 }
-async function ask(canvas,note){
+async function ask(canvas,note,mode){
   const image=canvas.toDataURL('image/jpeg',isFast()?.78:.88).split(',')[1];
   const fast=isFast();
   let last='';
   for(let t=0;t<5;t++){
     try{
-      const r=await fetch(PROXY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,fast})});
+      const r=await fetch(PROXY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,fast,mode})});
       const j=await r.json().catch(()=>({}));
-      if(r.ok)return j.questions||[];
+      if(r.ok)return mode==='key'?(j.key||[]):(j.questions||[]);
       last=j.error||('HTTP '+r.status);
       if(r.status===400||r.status===500)throw new Error(last);
     }catch(e){last=e.message||String(e);if(/GEMINI|image|bad/i.test(last))throw e;if(e instanceof TypeError&&t>=1)throw new Error('Worker URL galat hai ya internet nahi hai')}
@@ -109,7 +125,7 @@ $('go').onclick=async()=>{
     while(true){const k=next++;if(k>=list.length)return;const i=list[k],label=pdf?'Page '+i:'Photo '+(i+1);
       try{
         log(`${label}: AI ko bhej raha hoon…`);const c=await pageCanvas(i),qs=await ask(c,m=>log(`${label}: ${m}`));
-        res[k]=qs.map(q=>shuffle({...q,fig:svgUrl(q.fig)}));
+        res[k]=qs.map(q=>({...q,fig:svgUrl(q.fig)}));
         log(`${label}: ${qs.length} question`);
       }catch(e){fail++;log(`${label}: nahi hua (${e.message})`,true)}
       fin++;$('pb').style.width=Math.max(3,fin/list.length*100)+'%';
@@ -117,12 +133,35 @@ $('go').onclick=async()=>{
   }
   await Promise.all([worker(),worker(),worker()]);clearInterval(tick);
   res.forEach(a=>a&&Q.push(...a));
+  if(Q.length&&keyCv.length){
+    const km={};let kf=0;
+    for(let i=0;i<keyCv.length;i++){try{$('st').textContent=`Answer key padh raha hoon ${i+1}/${keyCv.length}…`;log(`Answer key page ${i+1}: bhej raha hoon…`);
+      (await ask(keyCv[i],m=>log('Key: '+m),'key')).forEach(x=>{km[x.no]=x.ans})}catch(e){kf++;log('Answer key page '+(i+1)+': nahi hua ('+e.message+')',true)}}
+    let used=0;
+    for(const q of Q){const v=q.no!=null?km[q.no]:null;if(v==null)continue;
+      const m=String(v).trim().toLowerCase().match(/^\(?([a-f]|\d)\)?/);if(!m)continue;
+      const idx=/\d/.test(m[1])?Number(m[1])-1:'abcdef'.indexOf(m[1]);
+      if(idx>=0&&idx<q.options.length){q.answer=idx;q.guess=false;used++}}
+    log(`Answer key se ${used}/${Q.length} questions ke sahi answer mile.`);
+  }
+  Q=Q.map(shuffle);
   $('go').disabled=false;
   if(!Q.length){$('st').textContent=fail?'Koi quiz nahi bana. Neeche error dekho.':'In pages me question nahi mile. Dusre pages try karo.';return}
   $('st').textContent=`${Q.length} questions ready`+(fail?` (${fail} page fail — dobara try kar sakte ho)`:'');
   cur=0;score=0;show();$('qz').scrollIntoView({behavior:'smooth'});
 };
 
+function tbl(t){const tb=el('table','tb'),h=el('tr');t.cols.forEach(c=>h.append(el('th',0,c)));tb.append(h);
+  t.rows.forEach(r=>{const tr=el('tr');r.forEach(c=>tr.append(el('td',0,c)));tb.append(tr)});const w=el('div');w.style.overflowX='auto';w.append(tb);return w}
+let pend=[],uid=0;
+function drawMols(host,mols){
+  const row=el('div','mrow');host.append(row);
+  mols.forEach(m=>{
+    const box=el('div','mol'),cv=document.createElement('canvas'),id='mol'+(++uid);cv.id=id;cv.width=240;cv.height=180;box.append(cv,el('div',0,m.label||''));row.append(box);
+    const fb=()=>{box.replaceChildren(el('div',0,(m.label||'')+'  '+m.smiles))};
+    pend.push(()=>{try{if(!window.SmilesDrawer)return fb();new SmilesDrawer.SmiDrawer({width:240,height:180,padding:10}).draw(m.smiles,'#'+id,'light',null,fb)}catch(e){fb()}});
+  });
+}
 function show(){
   const root=$('qz');root.replaceChildren();done=false;
   if(cur>=Q.length){const d=el('div','card');d.append(el('h2',0,`Score: ${score} / ${Q.length}`));
@@ -133,11 +172,13 @@ function show(){
   const bar=el('div','bar');bar.innerHTML='<i></i>';bar.firstChild.style.width=(cur/Q.length*100)+'%';
   d.append(r,bar,el('h3',0,q.q));
   if(q.guess)d.append(el('div','mu','⚠ Is page par answer nahi tha, AI ne andaza lagaya hai.'));
+  if(q.table)d.append(tbl(q.table));
+  if(q.mols)drawMols(d,q.mols);
   if(q.fig){const im=new Image();im.src=q.fig;im.className='fig';const hb=el('button','g','Figure galat hai? Hatao');hb.style.fontSize='13px';hb.onclick=()=>{im.remove();hb.remove();q.fig=null};d.append(im,hb)}
   q.options.forEach((o,i)=>{const b=el('button','opt',o);b.onclick=()=>{
     if(done)return;done=true;const ok=i===q.answer;if(ok)score++;b.classList.add(ok?'ok':'bad');
     d.querySelectorAll('.opt')[q.answer].classList.add('ok');
     const n=el('button',0,cur+1<Q.length?'Next →':'Result');n.style.marginTop='10px';n.onclick=()=>{cur++;show()};d.append(n)};d.append(b)});
-  root.append(d);
+  root.append(d);const P=pend;pend=[];setTimeout(()=>P.forEach(f=>f()),0);
 }
 </script></body></html>
